@@ -1,52 +1,45 @@
 # Ornith-1.5-35B-A3B for GTX 1070: Inference Engine
 
-**A 35-billion-parameter AI on a graphics card from 2016.**
+**A 35B-parameter model on an 8 GB GTX 1070.**
 
-I have a GTX 1070. It has 8 GB of VRAM, no tensor cores, and as far as most AI software is concerned it no longer
-exists. I wanted a real local AI agent on it anyway: one that can read code, call tools, look at screenshots and keep up
-a long conversation. Not a 7B toy.
+This is a custom inference engine for [Ornith-1.5-35B-A3B](https://huggingface.co/ornith-ai/Ornith-1.5-35B-A3B-NVFP4), a
+35B mixture-of-experts model. It runs the model on a single GTX 1070 at about **25–30 tokens per second**, although the
+weights (22 GB) are almost three times larger than the card's memory. The 1070 has no tensor cores and no FP4 support,
+and most current inference software no longer targets it.
 
-This repository is the result. It runs [Ornith-1.5-35B-A3B](https://huggingface.co/ornith-ai/Ornith-1.5-35B-A3B-NVFP4),
-a 35B mixture-of-experts model, on that one card at about **25–30 tokens per second**. The model is 22 GB, almost three
-times what fits into the card.
-
-It is not a chat app. It is a local server that speaks the **OpenAI, Anthropic and Ollama APIs**, so the tools you already
-use can simply point at it: Claude Code, Cline, Continue, Open WebUI, aider, your own scripts. Tool calls, thinking,
-images and streaming all work.
+The engine runs as a local server with **OpenAI-, Anthropic- and Ollama-compatible APIs**. Existing tools connect to it
+directly: Claude Code, Cline, Continue, Open WebUI, aider or your own scripts. Streaming, tool calls, thinking and image
+input are supported.
 
 > Built for the GTX 1070 class (Pascal, compute capability 6.1, 8 GB) and nothing else. Every kernel is tuned for this
 > one card. On other GPUs it refuses to start unless you insist with `--force`.
 
-## How does that fit?
+## How it works
 
-The trick is that the model is big, but lazy. Every layer has 256 "experts", and for each token only 8 of them do any
-work: about 3B of the 35B parameters. So the engine never tries to hold the whole model. It keeps the busy experts close
-and fetches the rest when needed:
+Each layer of the model has 256 experts, and each token uses only 8 of them: about 3B of the 35B parameters. The engine
+therefore never holds the whole model in VRAM. It keeps frequently used experts close to the GPU and fetches the rest
+on demand:
 
-- **Three storage tiers.** The experts used most live in VRAM. Many more sit in pinned system RAM (up to 13.5 GB), which
-  the GPU can read directly over PCIe. Everything else stays on the SSD. While one layer computes, a small predictor
-  already guesses which experts the next layer will want.
-- **Kernels that read 4-bit weights directly.** The weights are stored in NVFP4, 4 bits per value. Instead of unpacking
-  them to 16 bit first, the kernels decode them in registers right inside the matrix multiplication. On a
-  memory-bound card, reading fewer bytes simply means going faster. The 1070 has no FP4 hardware, so this is done in
-  software, compiled at run time with CuPy.
-- **Working around Windows.** On Pascal under Windows, CUDA streams barely run in parallel. So instead of hoping for
-  overlap, every decode step is recorded as CUDA graphs and replayed.
-- **A compact memory of the conversation.** The KV cache is int8 with fine-grained scales, plus an exact copy of the last
-  2048 tokens. 30 of the 40 layers use linear attention with a fixed-size state, so long contexts stay affordable: up
-  to 184k tokens.
-- **Optional speed-ups.** In `fast` and `turbo` mode the engine skips experts that are not in VRAM and would barely
-  change the result anyway. That costs a measured 0.6 % or 2 % in perplexity and gains 26 % or 42 % speed. `exact`
-  mode is lossless.
+- **Three storage tiers.** The most used experts stay in VRAM, many more in pinned system RAM (up to 13.5 GB) that the
+  GPU reads directly over PCIe, and the rest on the SSD. A predictor fetches the next layer's experts in advance.
+- **Fused NVFP4 kernels.** The 4-bit weights are decoded in registers inside the matrix-vector kernels instead of being
+  unpacked to fp16 first. Decoding is memory-bound, so reading fewer bytes makes it faster. The kernels are compiled at
+  run time with CuPy/NVRTC.
+- **CUDA graphs.** CUDA streams hardly overlap on Pascal under Windows (WDDM), so each decode step is captured as CUDA
+  graphs and replayed.
+- **Compact KV cache.** int8 with fine-grained scales, plus an exact fp16 window of the last 2048 tokens. 30 of the 40
+  layers use linear attention with a fixed-size state, which keeps long contexts (up to 184k tokens) affordable.
+- **Quality modes.** `fast` and `turbo` skip experts that are not in VRAM and carry little routing weight: −0.6 % or
+  −2 % perplexity for +26 % or +42 % speed. `exact` is lossless.
 
 ## What you need
 
 - Windows 10 or 11
 - a GTX 1070 (or another 8 GB card of the same generation) with a current NVIDIA driver
 - 32 GB of RAM. 16 GB works too, start it with `--ram-gb 4` then.
-- about 51 GB of free disk space during the install and 22 GB afterwards. Please use an internal SSD. It runs from a USB
-  hard disk too, but at 2–8 tokens/s.
-- Python is not required. The installer brings its own if you have none.
+- about 51 GB of free disk space during the install and 22 GB afterwards, preferably on an internal SSD (from a USB hard
+  disk it runs at only 2–8 tokens/s)
+- Python is optional. The installer sets up its own if none is found.
 
 ## Install
 
@@ -56,16 +49,16 @@ cd Ornith-1.5-35B-A3B-for-GTX1070-Inference-Engine
 install.bat --dir C:\ornith
 ```
 
-Then get a coffee, or two. The installer:
-1. Checks your GPU, RAM and disk before it touches anything.
-2. Sets up Python with exactly the package versions it was tested with. If you have no Python 3.10–3.12, it gets a
-   private one via [uv](https://github.com/astral-sh/uv).
+The installation takes 30–60 minutes, mostly for the download. The installer:
+1. Checks GPU, RAM and disk space before it changes anything.
+2. Sets up Python with the tested package versions. Without Python 3.10–3.12 it installs a private copy via
+   [uv](https://github.com/astral-sh/uv).
 3. Downloads the model from Hugging Face (21.8 GB).
-4. Repacks it into the format the engine streams from, then deletes the download.
-5. Asks the model one question to make sure everything works.
+4. Repacks it into the format the engine streams from and deletes the download.
+5. Runs a short test query.
 
-It shows what it is doing (`download 12.3 / 21.8 GB, 38 MB/s, about 4 min left`). If anything stops it, a dropped
-connection or a closed laptop lid, just run the same command again and it continues where it left off.
+Progress is shown throughout (`download 12.3 / 21.8 GB, 38 MB/s, about 4 min left`). After an interruption, running the
+same command again resumes where it stopped.
 
 `install.bat status` shows what is installed where. `install.bat uninstall` shows what it would delete, asks you, and then
 removes only what the installer created.
@@ -76,24 +69,21 @@ removes only what the installer created.
 start-ornith.bat
 ```
 
-After about 40 seconds it is ready. Open **http://127.0.0.1:8000/** in your browser: a small settings panel shows what
-the engine is doing and lets you switch quality, RAM, thinking and more while it runs.
+The server is ready after about 40 seconds. **http://127.0.0.1:8000/** opens a settings panel with live status, where
+quality, RAM, thinking and other settings can be changed while it runs.
 
-The very first answer after the install takes about a minute, because the CUDA kernels compile once. After that they
-are cached.
+The first answer after installation takes about a minute because the CUDA kernels are compiled once and then cached.
 
 ## Connect your tools
 
-Point any tool at one of these:
-
-| If your tool speaks... | use this base URL |
+| API | Base URL |
 |---|---|
 | OpenAI | `http://127.0.0.1:8000/v1` |
 | Anthropic | `http://127.0.0.1:8000` |
 | Ollama | `http://127.0.0.1:8000` |
 
-The model name is `ornith-1.5-35b-a3b`, though any name works. As the API key, anything goes (`local` is fine) unless you
-set one with `--api-key`. Ready-made settings for Claude Code, Cline, Continue, Open WebUI and aider are in
+Model name: `ornith-1.5-35b-a3b` (other names are accepted). API key: any value, unless one is set with `--api-key`.
+Configuration examples for Claude Code, Cline, Continue, Open WebUI and aider are in
 **[docs/harnesses.md](docs/harnesses.md)**.
 
 ```python
@@ -103,30 +93,31 @@ print(client.chat.completions.create(model="ornith-1.5-35b-a3b",
       messages=[{"role": "user", "content": "Hello!"}]).choices[0].message.content)
 ```
 
-## Why agents don't have to wait
+## Prefix cache
 
-Agent tools send the entire conversation again with every single request. With 50,000 tokens of history, reading that
-in from scratch would take minutes, every time. So the server remembers:
+Agent tools resend the full conversation with every request. Without a cache, a 50k-token history would be read in
+again on each turn, which takes minutes. The server avoids this:
 
-- **It keeps exact snapshots of its own state** at the end of each message. When the next request arrives, it only reads
-  the new part. Measured against a full re-read, the result is identical.
-- **When you switch between conversations,** the previous one is parked in RAM, exactly as it was.
-- **Long conversations are also saved compressed to disk.** Coming back to a 150k-token conversation, even after a
-  restart, takes seconds instead of about 23 minutes. (This copy is slightly lossy, about 1–2 % perplexity.)
+- **Checkpoints.** The engine state is saved at the end of each message, and the next request only processes the new
+  part. The result is identical to a full re-read (measured).
+- **Conversation switching.** When another conversation comes in, the previous one is kept as an exact copy in RAM.
+- **Disk snapshots.** Long conversations are also stored compressed on disk. Resuming a 150k-token conversation, even
+  after a restart, takes seconds instead of about 23 minutes. The compression is slightly lossy, about 1–2 %
+  perplexity.
 
-The `cached_tokens` field in the API response shows how much came from memory. One GPU means one request at a time. Any
-others wait their turn.
+The `cached_tokens` field of the API response shows how much of the prompt came from the cache. Requests are processed
+one at a time.
 
-## When something is off
+## Troubleshooting
 
-| What you see | What helps |
+| Symptom | Solution |
 |---|---|
-| `cannot listen on ...` | something else is using port 8000: close it, or use `--port` |
-| it refuses your GPU | it is only built for the GTX 1070 class. `--force` tries anyway, with no promises |
-| only 2–8 tokens/s | the model is on a USB or hard disk. Install again to an internal SSD with `--weights-from <old folder>`, then uninstall the old one |
-| slower in very long sessions | the conversation memory takes VRAM away from the experts. Start a fresh conversation for a new topic |
-| `cached_tokens` is always 0 | your tool changes old messages, for example with timestamps. Only an unchanged history can be reused |
-| every short reply waits ~1.5 s before starting | that is physics: each new piece of text needs every layer's experts once over PCIe |
+| `cannot listen on ...` | the port is in use: stop the other program or choose `--port` |
+| the GPU is rejected | only GTX 1070-class cards are supported. `--force` starts anyway, without guarantees |
+| only 2–8 tokens/s | the model is on a USB or hard disk. Reinstall to an internal SSD with `--weights-from <old folder>`, then uninstall the old copy |
+| slower in very long sessions | the KV cache uses VRAM that the experts would otherwise use. Start a new conversation for new topics |
+| `cached_tokens` is always 0 | the client modifies earlier messages, for example with timestamps. Only an unchanged prefix can be reused |
+| about 1.5 s before every reply starts | expected: every new piece of prompt needs each layer's experts once over PCIe |
 
 ## Reference
 
@@ -208,10 +199,9 @@ You can work on the server without the GPU or the 22 GB of weights:
 | `install.py`, `install.bat` | installer, status and uninstaller |
 | `engine/` | the inference engine: decoding (`engine3.py`), prompt reading (`prefill.py`), CUDA kernels (`kern*.py`), disk snapshots (`kvsnap.py`), image encoder (`vision.py`) |
 
-## Standing on shoulders
+## Related work
 
-None of the individual ideas here are new, and they deserve credit. What is new is putting them together until a 35B
-model runs well on one old consumer card.
+The individual techniques build on existing work. This project combines them and tunes them for one older consumer GPU.
 
 | Idea | Related work |
 |---|---|
@@ -222,8 +212,7 @@ model runs well on one old consumer card.
 
 ## Model and license
 
-This is an unofficial project, not made by or affiliated with the authors of Ornith. It just makes their model run on
-old hardware. The weights are not part of this repository. The installer downloads them from
+This is an unofficial project and is not affiliated with the authors of Ornith. The weights are not part of this repository. The installer downloads them from
 [ornith-ai/Ornith-1.5-35B-A3B-NVFP4](https://huggingface.co/ornith-ai/Ornith-1.5-35B-A3B-NVFP4), which has its own license
 (MIT at the time of writing).
 
