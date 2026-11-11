@@ -1,0 +1,25 @@
+# Ornith-1.5-35B-A3B-for-GTX1070-Inference-Engine
+
+> Runs the 35B mixture-of-experts LLM Ornith-1.5-35B-A3B (NVFP4) on a single NVIDIA GTX 1070 (8 GB, Pascal) under
+> Windows at about 25-30 tokens/s, and serves it over OpenAI-, Anthropic- and Ollama-compatible HTTP APIs (streaming,
+> tool calls, thinking, image input). The experts stream from pinned RAM and SSD into VRAM; fused NVFP4 kernels decode the
+> weights in registers. A prefix cache with exact checkpoints, RAM parking and compressed disk snapshots keeps agent
+> loops fast. Only for GTX 1070-class GPUs (compute capability 6.1, 8 GB).
+
+Install: `install.bat --dir C:\ornith`. It brings its own Python if needed, downloads 21.8 GB and needs about 51 GB free
+during the install. Start: `start-ornith.bat`. API base URLs: OpenAI `http://127.0.0.1:8000/v1`, Anthropic and Ollama
+`http://127.0.0.1:8000`. Model name: `ornith-1.5-35b-a3b`.
+
+## Docs
+
+- [README.md](README.md): overview, install, options, endpoints, cache, troubleshooting
+- [AGENTS.md](AGENTS.md): exact step-by-step install and verification for AI agents
+- [docs/harnesses.md](docs/harnesses.md): settings for Claude Code, Cline, Continue, Open WebUI, aider, the SDKs and curl
+- [config.example.json](config.example.json): all server options as a config file
+
+## Code
+
+- [ornith_serve.py](ornith_serve.py): the HTTP server (OpenAI / Anthropic / Ollama), prefix cache, settings panel
+- [install.py](install.py): installer, status and uninstaller
+- [engine/](engine/): the inference engine (CuPy/NVRTC kernels, expert streaming, prefill, KV snapshots)
+- [tests/](tests/): API tests with a fake engine (no GPU needed) and tests with the real model

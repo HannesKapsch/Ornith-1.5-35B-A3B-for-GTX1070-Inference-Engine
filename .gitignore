@@ -1,0 +1,13 @@
+# machine-specific, written by the installer
+install.json
+start-ornith.bat
+.tools/
+# test and benchmark output
+test_real.json
+tests/test_real.json
+bench_tail.json
+__pycache__/
+*.pyc
+# never commit weights
+*.safetensors
+*.bin

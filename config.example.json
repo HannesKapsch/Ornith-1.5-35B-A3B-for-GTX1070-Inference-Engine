@@ -1,0 +1,12 @@
+{
+  "port": 8000,
+  "ram_gb": 13.5,
+  "quality": "turbo",
+  "langs": "auto",
+  "think": true,
+  "temperature": 0.6,
+  "max_tokens": 32768,
+  "ctx": 184320,
+  "park_gb": 3.0,
+  "snap_cap_gb": 20
+}

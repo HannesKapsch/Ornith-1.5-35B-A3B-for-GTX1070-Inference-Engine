@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ornith-serve</title>
+<style>
+:root { --bg:#f6f7f9; --card:#fff; --fg:#1d2330; --mute:#677086; --line:#e2e5ec; --acc:#2f6fed; --ok:#1f9d55; --warn:#c77c02; --bad:#d23c3c; }
+@media (prefers-color-scheme: dark) { :root { --bg:#14161b; --card:#1d2027; --fg:#e7e9ee; --mute:#9aa2b4; --line:#2c3039; --acc:#6e9bff; --ok:#3cc47c; --warn:#e3a535; --bad:#ff6b6b; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width:980px; margin:0 auto; padding:24px 16px 48px; }
+header { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
+h1 { font-size:22px; margin:0; } h2 { font-size:15px; margin:0 0 12px; color:var(--mute); font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+.pill { padding:3px 10px; border-radius:99px; font-size:13px; font-weight:600; background:var(--line); }
+.pill.ready { background:color-mix(in srgb, var(--ok) 18%, transparent); color:var(--ok); }
+.pill.busy { background:color-mix(in srgb, var(--acc) 18%, transparent); color:var(--acc); }
+.pill.loading, .pill.starting { background:color-mix(in srgb, var(--warn) 18%, transparent); color:var(--warn); }
+.pill.error { background:color-mix(in srgb, var(--bad) 18%, transparent); color:var(--bad); }
+.grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(290px, 1fr)); gap:16px; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
+.stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:12px; }
+.stat b { display:block; font-size:22px; } .stat span { color:var(--mute); font-size:13px; }
+.row { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:8px 12px; padding:9px 0; border-top:1px solid var(--line); }
+.row label { flex:1 1 160px; } .seg, .row input { flex-shrink:0; }
+.row:first-of-type { border-top:0; }
+.row label { font-weight:600; } .row small { display:block; color:var(--mute); font-weight:400; font-size:12.5px; }
+.seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+.seg button { border:0; background:transparent; color:var(--fg); padding:6px 11px; cursor:pointer; font:inherit; font-size:13.5px; }
+.seg button.on { background:var(--acc); color:#fff; }
+input[type=number], input[type=password] { width:110px; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); font:inherit; }
+input[type=range] { width:150px; }
+.mono { font-family:ui-monospace, Consolas, monospace; font-size:13px; }
+.url { display:flex; gap:8px; align-items:center; margin:6px 0; } .url code { flex:1; min-width:0; padding:6px 8px; background:var(--bg); border:1px solid var(--line); border-radius:8px; overflow-wrap:anywhere; }
+.url button, .btn { border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:8px; padding:6px 10px; cursor:pointer; font:inherit; font-size:13px; }
+.bar { height:8px; background:var(--line); border-radius:99px; overflow:hidden; margin-top:8px; } .bar i { display:block; height:100%; background:var(--acc); width:0; transition:width .4s; }
+.note { color:var(--mute); font-size:13px; margin-top:8px; } #toast { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); background:var(--fg); color:var(--bg); padding:8px 14px; border-radius:8px; opacity:0; transition:opacity .3s; font-size:14px; }
+table { width:100%; border-collapse:collapse; font-size:14px; } td { padding:5px 0; border-top:1px solid var(--line); } td:last-child { text-align:right; color:var(--mute); }
+</style>
+</head>
+<body>
+<main>
+  <header><h1>ornith-serve</h1><span id="state" class="pill">…</span><span id="what" class="note"></span></header>
+  <div class="card" id="loadcard" hidden><h2>Loading</h2><div id="loadwhat"></div><div class="bar"><i id="loadbar"></i></div></div>
+  <div class="card" style="margin-bottom:16px">
+    <div class="stats">
+      <div class="stat"><b id="toks">–</b><span>tok/s (last answer)</span></div>
+      <div class="stat"><b id="reqs">–</b><span>requests</span></div>
+      <div class="stat"><b id="cached">–</b><span>prompt tokens from cache</span></div>
+      <div class="stat"><b id="live">–</b><span>tokens in the engine</span></div>
+      <div class="stat"><b id="vram">–</b><span>VRAM: KV cache / experts</span></div>
+      <div class="stat"><b id="queue">–</b><span>waiting requests</span></div>
+    </div>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <h2>Settings (live)</h2>
+      <div class="row"><label>Quality<small>Exact = lossless. Fast −0.6 % / +26 % speed, Turbo −2 % / +42 %.</small></label>
+        <div class="seg" data-key="quality"><button data-v="exact">Exact</button><button data-v="fast">Fast</button><button data-v="turbo">Turbo</button></div></div>
+      <div class="row"><label>Thinking<small>default when a request does not say</small></label>
+        <div class="seg" data-key="think"><button data-v="true">On</button><button data-v="false">Off</button></div></div>
+      <div class="row"><label>Output scripts<small>auto: CJK/other scripts only once they appear</small></label>
+        <div class="seg" data-key="langs"><button data-v="auto">Auto</button><button data-v="all">All</button><button data-v="latin">Latin</button></div></div>
+      <div class="row"><label>Expert RAM <span id="ramv" class="mono"></span><small>pinned RAM, 0.5–13.5 GB; more = faster</small></label>
+        <input type="range" id="ram" min="0.5" max="13.5" step="0.5"></div>
+      <div class="row"><label>Temperature<small>default sampling temperature</small></label><input type="number" id="temperature" min="0" max="2" step="0.05"></div>
+      <div class="row"><label>Max answer tokens<small>default limit per answer</small></label><input type="number" id="max_tokens" min="1" step="256"></div>
+      <div class="note">Changes apply from the next request and last until the server restarts. For permanent defaults use the config file.</div>
+    </div>
+    <div class="card">
+      <h2>Connect</h2>
+      <div class="note">OpenAI-compatible base URL</div><div class="url"><code id="u-openai"></code><button data-copy="u-openai">Copy</button></div>
+      <div class="note">Anthropic-compatible base URL</div><div class="url"><code id="u-anth"></code><button data-copy="u-anth">Copy</button></div>
+      <div class="note">Ollama-compatible URL</div><div class="url"><code id="u-ollama"></code><button data-copy="u-ollama">Copy</button></div>
+      <div class="note">Model name: <span class="mono" id="model"></span> (any name is accepted)</div>
+      <div id="keybox" hidden style="margin-top:12px"><div class="note">This server needs an API key:</div>
+        <div class="url"><input type="password" id="key" placeholder="API key" style="flex:1;width:auto"><button id="savekey" class="btn">Use</button></div></div>
+    </div>
+    <div class="card">
+      <h2>Startup settings</h2>
+      <table id="fixed"></table>
+      <div class="note">Set with command-line options or <span class="mono">~/.ornith-serve/config.json</span>.</div>
+    </div>
+  </div>
+</main>
+<div id="toast"></div>
+<script>
+const $ = id => document.getElementById(id);
+let key = ''; try { key = localStorage.getItem('ornith-key') || ''; } catch (e) {}
+let editing = false, last = null;
+function hdr() { return key ? { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' }; }
+function toast(t) { const e = $('toast'); e.textContent = t; e.style.opacity = 1; clearTimeout(e._t); e._t = setTimeout(() => e.style.opacity = 0, 1800); }
+function gb(x) { return x == null ? '–' : (+x).toFixed(1); }
+async function status() {
+  let r;
+  try { r = await fetch('/ornith/status', { headers: hdr() }); } catch (e) { $('state').textContent = 'offline'; $('state').className = 'pill error'; return; }
+  if (r.status === 401) { $('keybox').hidden = false; $('state').textContent = 'API key needed'; return; }
+  const s = await r.json(); last = s;
+  $('state').textContent = s.state; $('state').className = 'pill ' + s.state;
+  $('what').textContent = s.what || '';
+  const loading = s.state === 'loading' || s.state === 'starting' || (s.state === 'busy' && s.total > 0);
+  $('loadcard').hidden = !loading;
+  if (loading) { $('loadwhat').textContent = s.what + (s.total ? ` (${s.done} / ${s.total})` : ''); $('loadbar').style.width = s.total ? (100 * s.done / s.total) + '%' : '15%'; }
+  $('toks').textContent = s.last_tok_s ?? '–'; $('reqs').textContent = s.requests ?? 0;
+  $('cached').textContent = s.prompt_tokens ? Math.round(100 * s.cached_tokens / s.prompt_tokens) + ' %' : '–';
+  $('live').textContent = s.live_tokens ?? '–'; $('vram').textContent = s.vram_kv_gb != null ? `${gb(s.vram_kv_gb)} / ${gb(s.vram_experts_gb)} GB` : '–';
+  $('queue').textContent = s.queue ?? 0; $('model').textContent = s.model;
+  const base = location.origin;
+  $('u-openai').textContent = base + '/v1'; $('u-anth').textContent = base; $('u-ollama').textContent = base;
+  if (!editing) {
+    for (const seg of document.querySelectorAll('.seg')) for (const b of seg.children) b.classList.toggle('on', String(s[seg.dataset.key]) === b.dataset.v);
+    $('ram').value = s.ram_gb; $('ramv').textContent = s.ram_gb + ' GB'; $('temperature').value = s.temperature; $('max_tokens').value = s.max_tokens;
+  }
+  const f = [['Context', s.ctx_max + ' tokens'], ['Prefix cache', s.cache ? 'on' : 'off'], ['RAM park', s.park_gb + ' GB, ' + (s.parked || []).length + ' parked'],
+             ['Disk snapshots', s.snapshots_on ? s.snapshots + ' stored, cap ' + s.snap_cap_gb + ' GB' : 'off'], ['Max image size', (s.max_image_pixels / 1e6).toFixed(1) + ' MP'],
+             ['Listening on', s.host + ':' + s.port], ['API key', s.api_key ? 'required' : 'none'], ['Version', s.version]];
+  $('fixed').innerHTML = f.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('');
+}
+async function set(body) {
+  const r = await fetch('/ornith/config', { method: 'POST', headers: hdr(), body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  toast(r.ok ? 'Saved' : 'Error: ' + ((j.error && j.error.message) || r.status));
+  editing = false; status();
+}
+for (const seg of document.querySelectorAll('.seg')) seg.addEventListener('click', e => {
+  const v = e.target.dataset.v; if (v == null) return;
+  set({ [seg.dataset.key]: v === 'true' ? true : v === 'false' ? false : v });
+});
+$('ram').addEventListener('input', () => { editing = true; $('ramv').textContent = $('ram').value + ' GB'; });
+$('ram').addEventListener('change', () => set({ ram_gb: +$('ram').value }));
+for (const id of ['temperature', 'max_tokens']) {
+  $(id).addEventListener('focus', () => editing = true);
+  $(id).addEventListener('change', () => set({ [id]: +$(id).value }));
+}
+document.addEventListener('click', e => { const id = e.target.dataset && e.target.dataset.copy; if (id) { navigator.clipboard.writeText($(id).textContent); toast('Copied'); } });
+$('savekey').addEventListener('click', () => { key = $('key').value; try { localStorage.setItem('ornith-key', key); } catch (e) {} $('keybox').hidden = true; status(); });
+status(); setInterval(status, 2000);
+</script>
+</body>
+</html>
