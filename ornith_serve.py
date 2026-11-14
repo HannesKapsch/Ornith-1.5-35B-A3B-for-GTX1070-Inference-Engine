@@ -19,7 +19,7 @@ Threads: HTTP handler threads parse, validate and tokenize requests (own tokeniz
 import argparse, collections, copy, hashlib, json, os, queue, re, sys, threading, time, traceback, uuid
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
-__version__ = '1.0.0'
+__version__ = '1.0.2'
 HERE = os.path.dirname(os.path.abspath(__file__))
 INSTALL = os.path.join(HERE, 'install.json')               # written by install.py: where the weights live
 if os.path.isfile(INSTALL):

@@ -1,8 +1,12 @@
 # Changelog
 
+## 1.0.2 (2026-11-14)
+
+- The server now reports the correct version (/health, /status, server header, startup log). No other changes.
+
 ## 1.0.1 (2026-11-14)
 
-- Moved to the new GitHub account name HannesKapsch: install commands, links and the live demo URL now point to github.com/HannesKapsch. Old Kessler833 links redirect for now. No code changes.
+- Moved to the new GitHub account name HannesKapsch: install commands and links now point to github.com/HannesKapsch. Old Kessler833 links redirect for now. No code changes.
 
 ## 1.0.0
 
