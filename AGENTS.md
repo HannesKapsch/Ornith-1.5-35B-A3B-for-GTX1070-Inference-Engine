@@ -16,7 +16,7 @@ Run these checks and stop with a clear message to the user if one fails:
 
 ## 2. Install
 
-Clone `https://github.com/Kessler833/Ornith-1.5-35B-A3B-for-GTX1070-Inference-Engine` and run from the repository folder:
+Clone `https://github.com/HannesKapsch/Ornith-1.5-35B-A3B-for-GTX1070-Inference-Engine` and run from the repository folder:
 
 ```bash
 install.bat --dir C:\ornith

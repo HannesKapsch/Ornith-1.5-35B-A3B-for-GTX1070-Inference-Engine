@@ -44,7 +44,7 @@ on demand:
 ## Install
 
 ```bash
-git clone https://github.com/Kessler833/Ornith-1.5-35B-A3B-for-GTX1070-Inference-Engine.git
+git clone https://github.com/HannesKapsch/Ornith-1.5-35B-A3B-for-GTX1070-Inference-Engine.git
 cd Ornith-1.5-35B-A3B-for-GTX1070-Inference-Engine
 install.bat --dir C:\ornith
 ```
